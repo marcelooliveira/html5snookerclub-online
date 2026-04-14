@@ -8,6 +8,8 @@
         <script type="text/javascript" src="./Html5SnookerClub_files/Vector2D.js"></script> 
         <script type="text/javascript" src="./Html5SnookerClub_files/CanvasPrototype.js"></script> 
         <script type="text/javascript" src="./Html5SnookerClub_files/Queue.js"></script> 
+        <script type="text/javascript" src="https://togetherjs.com/togetherjs-min.js"></script>
+        <script type="text/javascript" src="./Html5SnookerClub_files/OnlineSession.js"></script>
 		<link href="./Html5SnookerClub_files/Site.css" rel="stylesheet" type="text/css">
 		<style> 
 		    body
@@ -66,6 +68,11 @@
             <span id="player2Name" class="player2Name" style="color: rgb(255, 255, 255); ">PLAYER 2</span>
             <span id="player1Score" class="player1Score">4</span>
             <span id="player2Score" class="player2Score">4</span>
+            <span id="player1TurnLabel" class="playerTurnLabel"></span>
+            <span id="player2TurnLabel" class="playerTurnLabel"></span>
+            <button id="playOnlineBtn">Play Online</button>
+            <input id="sessionUrlBox" type="text" readonly style="display:none;">
+            <div id="disconnectOverlay" style="display:none;"></div>
             <span id="player1Image" class="player1Image" style="opacity: 0.25; ">&nbsp;</span>
             <span id="player2Image" class="player2Image" style="opacity: 1; ">&nbsp;</span>
             <div id="gameEvents" class="gameEvents">===GAME EVENTS===<br>Begin shot: Player 1<br>Potted balls count: 2<br>Foul 4 points :  Expected 1, but hit 5<br>Foul 4 points :  causing the cue ball to miss all object balls<br>Foul 4 points : 5 was potted, while 1 was expected<br>ball.Points: 5<br>teams[playingTeamID - 1].BallOn.Points: 1<br>fallenRedCount: 1<br>redCount: 15<br> Lost 4 points.<br> wonPoints: 0, lostPoints: 4<br>End shot: Player 1<br>Begin shot: Player 2<br>Potted balls count: 2<br>Foul 4 points :  Expected 1, but hit 2<br>Foul 4 points :  causing the cue ball to miss all object balls<br>Foul 4 points : 2 was potted, while 1 was expected<br>ball.Points: 2<br>teams[playingTeamID - 1].BallOn.Points: 1<br>fallenRedCount: 2<br>redCount: 15<br> Lost 4 points.<br> wonPoints: 0, lostPoints: 4<br>End shot: Player 2<br>Begin shot: Player 1<br>Potted balls count: 0<br> wonPoints: 0, lostPoints: 0<br>End shot: Player 1</div>
@@ -257,7 +264,13 @@
 
 		        animateCurrentPlayerImage();
 
+		        document.getElementById('playOnlineBtn').addEventListener('click', function () {
+		            OnlineSession.start();
+		        });
+
 		        $('#topCanvas').click(function (e) {
+		            // Online guard: blocks shot when not active, not this player's turn, or game is paused
+		            if (typeof OnlineSession !== 'undefined' && OnlineSession.isActive() && !OnlineSession.isMyTurn()) { return; }
 		            var x = e.pageX - NWCorner.x - 0;
 		            var y = e.pageY - NWCorner.y - 0;
 
@@ -271,6 +284,9 @@
 		                var dY = targetY - cueBall.position.y;
 		                var speed = 30 * strength;
 		                var angle = Math.atan2(dX, dY);
+		                if (typeof OnlineSession !== 'undefined' && OnlineSession.isActive()) {
+		                    OnlineSession.broadcastShotFired(Math.sin(angle) * speed, Math.cos(angle) * speed, targetX, targetY, strength);
+		                }
 		                cueBall.velocity = new Vector2D(Math.sin(angle) * speed, Math.cos(angle) * speed);
 		                fallenBallsProcessed = false;
 		                started = true;
@@ -295,6 +311,7 @@
 		                var dX = targetX - cueBall.position.x;
 		                var dY = targetY - cueBall.position.y;
 		                var angle = Math.atan2(dX, dY);
+		                if (typeof OnlineSession !== 'undefined') { OnlineSession.onMouseMove(targetX, targetY); }
 		            }
 		        });
 
@@ -1340,6 +1357,7 @@
 
 		        animateCurrentPlayerImage();
 		        consoleLog('1241');
+		        if (typeof OnlineSession !== 'undefined') { OnlineSession.onShotResolved(); }
 		    }
 
 		    function GetCandidateBall(ball, points) {
