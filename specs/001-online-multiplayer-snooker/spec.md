@@ -7,6 +7,18 @@
 
 ---
 
+## Clarifications
+
+### Session 2026-04-13
+
+- Q: What security model governs the session URL token? → A: Long random token (unguessable UUID-style) — private to those who receive the link
+- Q: Who runs the authoritative physics simulation for each shot? → A: The shooting player's browser runs physics; final ball positions are broadcast to the opponent when all balls stop
+- Q: Which TogetherJS hub server will relay messages between the two browsers? → A: Mozilla's public hub at hub.togetherjs.com (no self-hosted server required)
+- Q: Where is game state stored during a disconnection so the rejoining player can resume? → A: Connected player's browser holds state in memory and re-broadcasts it when the disconnected player rejoins
+- Q: How is the active player's turn surfaced visually in the UI? → A: Extend existing player panel opacity toggling with a "Your turn" / "Waiting for opponent…" text label below each score
+
+---
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Create and Share a Game Session (Priority: P1)
@@ -69,7 +81,7 @@ If a player's connection drops during a game, both players should receive a clea
 **Acceptance Scenarios**:
 
 1. **Given** a player is in an active online game, **When** their connection is lost, **Then** the other player sees a "Opponent disconnected — waiting to reconnect…" message and the game pauses.
-2. **Given** a player disconnected during a game, **When** they reopen the session link, **Then** they are reconnected to the same game and can resume.
+2. **Given** a player disconnected during a game, **When** they reopen the session link and reconnect, **Then** the still-connected player's browser re-broadcasts the full current game state so the rejoining player's screen is restored to the exact point of disconnection.
 3. **Given** a disconnected player has not returned within 5 minutes, **When** the connected player chooses to end the game, **Then** they are declared the winner and returned to the start screen.
 
 ---
@@ -103,23 +115,23 @@ Each player should have a visible name in the game UI. Players should be identif
 
 ### Functional Requirements
 
-- **FR-001**: System MUST allow a player to initiate an online session and generate a unique, shareable session URL.
+- **FR-001**: System MUST allow a player to initiate an online session and generate a unique, shareable session URL containing a cryptographically random, unguessable token (128-bit UUID or equivalent) so that only players who receive the link can access the session.
 - **FR-002**: System MUST allow a second player to join an active session by opening the shared URL.
 - **FR-003**: System MUST enforce that only the active player (the one whose turn it is) can aim and shoot the cue ball.
-- **FR-004**: System MUST display a "Waiting for opponent…" indicator to the non-active player during the opponent's turn.
-- **FR-005**: System MUST transmit shot input (cue direction, shot power) from the active player to the remote player before the shot executes.
-- **FR-006**: System MUST synchronise the positions of all balls on the table to both players after every shot resolves.
+- **FR-004**: System MUST display turn state to both players using the existing player panel opacity mechanism (active player at full opacity, inactive at reduced opacity) supplemented by a text label below each score panel: "Your turn" for the active player and "Waiting for opponent…" for the inactive player.
+- **FR-005**: System MUST transmit shot input (cue direction, shot power) from the active player to the remote player so the opponent can observe the shot in progress.
+- **FR-006**: System MUST broadcast the authoritative final positions of all balls — as resolved by the shooting player's browser — to the opponent once all balls have come to rest, ensuring both screens converge to an identical table state.
 - **FR-007**: System MUST synchronise score updates, turn changes, and fouls to both players in real-time.
 - **FR-008**: System MUST display the connection status of both players (connected / disconnected) in the UI.
 - **FR-009**: System MUST pause the game and notify both players when one player disconnects.
-- **FR-010**: System MUST allow a disconnected player to rejoin the session and resume the game.
+- **FR-010**: System MUST allow a disconnected player to rejoin the session within 5 minutes; upon rejoin the still-connected player's browser MUST re-broadcast the full current game state so both screens are identical.
 - **FR-011**: System MUST display each player's name adjacent to their score on the scoreboard.
 - **FR-012**: System MUST allow Player 1 (the session host) to take the first turn.
 - **FR-013**: System MUST prevent a third party from becoming an active player in a session already occupied by two players.
 
 ### Key Entities
 
-- **Session**: A unique online game instance shared between exactly two players. Identified by a URL token. Carries current game state.
+- **Session**: A unique online game instance shared between exactly two players. Identified by a cryptographically random, unguessable URL token (128-bit UUID or equivalent). Carries current game state.
 - **Player**: A human participant in a session. Has a display name, a connection status, an assigned player slot (Player 1 / Player 2), and a score.
 - **Turn**: The active period during which one player has control of the cue. Passes between players according to snooker rules.
 - **Game State**: The complete snapshot of the table at any point — ball positions, scores, whose turn it is, balls remaining, current "ball on", and any fouls.
@@ -131,22 +143,25 @@ Each player should have a visible name in the game UI. Players should be identif
 ### Measurable Outcomes
 
 - **SC-001**: Two players on separate computers can start and complete a full frame of snooker entirely online without any manual page refresh or state reset.
-- **SC-002**: Ball positions and score updates appear on both players' screens within 2 seconds of a shot resolving under normal network conditions.
+- **SC-002**: The authoritative ball-position snapshot broadcast by the shooting player's browser arrives and is applied on the opponent's screen within 2 seconds of all balls stopping, under normal network conditions.
 - **SC-003**: A second player can go from receiving the session link to being ready to play in under 30 seconds.
 - **SC-004**: The active player's turn control is disabled on the opponent's screen 100% of the time — no shot can be taken by the wrong player.
-- **SC-005**: A player who disconnects and reconnects within 5 minutes can resume the game from the exact state at which the disconnection occurred.
-- **SC-006**: Players can identify whose turn it is at all times without ambiguity (clear on-screen indicator).
+- **SC-005**: A player who disconnects and reconnects within 5 minutes sees their screen restored to the exact game state at the point of disconnection — ball positions, scores, and whose turn it is — within 3 seconds of reconnecting.
+- **SC-006**: Players can identify whose turn it is at all times without ambiguity: the active player's score panel is at full opacity and shows "Your turn"; the inactive player's panel is dimmed and shows "Waiting for opponent…".
 
 ---
 
 ## Assumptions
 
-- The game will use Mozilla's TogetherJS as the real-time synchronisation layer; no custom WebSocket server is required for the initial version.
+- The game will use Mozilla's TogetherJS as the real-time synchronisation layer, relying on Mozilla's public hub at `hub.togetherjs.com` as the WebSocket relay. No custom or self-hosted server is required for this version. If the public hub becomes unavailable, the hub URL is a single configurable value that can be pointed to a self-hosted replacement without further code changes.
+- Session URLs are secured by a long, cryptographically random token (128-bit UUID or equivalent); no additional PIN or password is required. Security relies on the link remaining private to the two players.
 - Both players must use a modern browser with WebSocket support (Chrome, Firefox, Edge, Safari at current versions).
 - The session host is always Player 1 and takes the first turn.
 - Spectator support (more than two connected users watching) is out of scope for this version.
 - Mobile/touch device support is out of scope for this version.
 - Player authentication (login accounts, persistent player profiles) is out of scope; players are identified only within the session.
 - The existing single-player/local two-player game logic (turn management, scoring, fouls, ball physics) remains unchanged; only the input source and state broadcast layer are new.
+- The shooting player's browser is the authoritative physics host for each shot. The opponent's screen applies the broadcast final ball-position snapshot rather than running an independent simulation, eliminating floating-point divergence between browsers.
 - A disconnection timeout of 5 minutes before the remaining player can claim a win is a reasonable default for casual play.
+- Game state is not persisted to any external store. Recovery after disconnection relies on the still-connected player's browser holding the authoritative in-memory state. If both players disconnect simultaneously the session is unrecoverable and a new game must be started.
 - If a third party opens the session link, they are shown a read-only view (spectator) rather than an error page, to keep the experience graceful.
